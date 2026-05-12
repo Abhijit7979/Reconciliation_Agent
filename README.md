@@ -1,0 +1,4 @@
+- create a venv of python using this command 
+- conda create -p venv python=3.13 -y   
+- pre requirement - anconda 
+-  pip install -r requirements.txt       

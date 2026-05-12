@@ -1,0 +1,21 @@
+fastapi
+uvicorn[standard]
+python-multipart
+deepagents
+langchain
+langgraph
+langsmith
+python-dotenv
+pydantic
+typing-extensions
+rich
+
+# Model provider integrations for Deep Agents (install all so any provider can be used).
+langchain-openai
+langchain-anthropic
+langchain-google-genai
+langchain-ollama
+langchain-community
+tiktoken
+langchain-core
+langchain-openrouter
