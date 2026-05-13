@@ -1,0 +1,266 @@
+---
+description: Testing standards - pytest patterns for FastAPI + LangGraph agent systems
+globs: ["tests/**/*.py", "**/test_*.py"]
+---
+
+# Testing Standards
+
+## Framework & Setup
+
+- **Runner:** pytest
+- **Async:** pytest-asyncio
+- **HTTP:** httpx (async FastAPI test client)
+- **Mocking:** unittest.mock + pytest-mock
+- **Coverage:** pytest-cov (target: 80%+ on critical paths)
+
+### Install testing dependencies
+
+```bash
+pip install pytest pytest-asyncio pytest-cov pytest-mock httpx
+```
+
+### pytest.ini / pyproject.toml
+
+```toml
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "slow: marks tests that call real LLMs (deselect with '-m \"not slow\"')",
+    "integration: marks integration tests requiring external services",
+]
+```
+
+## Test Organization
+
+```
+tests/
+├── conftest.py              # Shared fixtures
+├── unit/
+│   ├── test_recon_graph.py  # LangGraph node tests
+│   ├── test_recon_agent.py  # Agent factory tests
+│   └── test_validators.py   # Input validation tests
+├── integration/
+│   ├── test_api.py          # FastAPI endpoint tests
+│   └── test_graph_flow.py   # Full graph execution tests
+└── fixtures/
+    ├── sample_state.json    # Sample state objects
+    └── mock_responses/      # Mock LLM responses
+```
+
+## Fixtures
+
+```python
+# tests/conftest.py
+import pytest
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+from fastapi.testclient import TestClient
+from httpx import AsyncClient, ASGITransport
+
+from src.main import app
+from src.Graph.recon_graph import ReconState
+
+
+@pytest.fixture
+def test_client():
+    """Synchronous test client for FastAPI."""
+    return TestClient(app)
+
+
+@pytest.fixture
+async def async_client():
+    """Async test client for FastAPI."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+
+@pytest.fixture
+def sample_state(tmp_path: Path) -> ReconState:
+    """Create a valid ReconState with temporary directories."""
+    bills_dir = tmp_path / "bills"
+    bills_dir.mkdir()
+    invoice_dir = tmp_path / "invoice"
+    invoice_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    
+    bank_pdf = tmp_path / "bank_statement.pdf"
+    bank_pdf.write_bytes(b"%PDF-1.4 fake content")
+    
+    return ReconState(
+        user_prompt="Reconcile these documents",
+        bill=str(bills_dir),
+        invoice=str(invoice_dir),
+        bank_statement=str(bank_pdf),
+        reference_excel="src/prompts/sample_template.xlsx",
+        output=str(output_dir),
+        file_path=str(tmp_path),
+        agent_response="",
+    )
+
+
+@pytest.fixture
+def mock_claude_agent():
+    """Mock Claude agent that returns a fixed response."""
+    with patch("src.agent.recon_agent.ClaudeCodeChatModel") as mock:
+        agent = MagicMock()
+        agent.stream.return_value = iter(["Reconciliation", " complete."])
+        agent.invoke.return_value = "Reconciliation complete."
+        mock.return_value = agent
+        yield agent
+```
+
+## Unit Test Patterns
+
+### Testing LangGraph Nodes
+
+```python
+# tests/unit/test_recon_graph.py
+
+def test_node_recon_returns_agent_response(sample_state, mock_claude_agent):
+    """node_recon should return collected agent response in state."""
+    from src.Graph.recon_graph import node_recon
+    
+    result = node_recon(sample_state)
+    
+    assert "agent_response" in result
+    assert result["agent_response"] == "Reconciliation complete."
+
+
+def test_node_recon_handles_agent_failure(sample_state):
+    """node_recon should handle agent errors gracefully."""
+    from src.Graph.recon_graph import node_recon
+    
+    with patch("src.Graph.recon_graph.ClaudeAgent") as mock:
+        mock.return_value.stream.side_effect = RuntimeError("LLM timeout")
+        
+        result = node_recon(sample_state)
+        
+        assert "error" in result or result.get("status") == "failed"
+```
+
+### Testing Agent Factories
+
+```python
+# tests/unit/test_recon_agent.py
+
+def test_create_claude_agent_configures_model():
+    """Factory should configure model and permissions correctly."""
+    with patch("src.agent.recon_agent.ClaudeCodeChatModel") as mock:
+        from src.agent.recon_agent import ClaudeAgent
+        
+        agent = ClaudeAgent(llm="claude-sonnet-4-6", file_path="/tmp/test")
+        
+        mock.assert_called_once()
+        call_kwargs = mock.call_args[1]
+        assert call_kwargs["model"] == "claude-sonnet-4-6"
+        assert call_kwargs["cwd"] == "/tmp/test"
+
+
+def test_create_deep_agent_configures_permissions():
+    """DeepAgent factory should set filesystem permissions."""
+    with patch("src.agent.recon_agent.create_deep_agent") as mock:
+        from src.agent.recon_agent import DeepAgent
+        
+        agent = DeepAgent(llm="test-model", file_path="/tmp/test/**")
+        
+        mock.assert_called_once()
+```
+
+## Integration Test Patterns
+
+### Testing FastAPI Endpoints
+
+```python
+# tests/integration/test_api.py
+import pytest
+from unittest.mock import patch, MagicMock
+
+
+@pytest.mark.asyncio
+async def test_reconcile_endpoint_success(async_client, tmp_path):
+    """POST /reconcile-from-folder should return reconciliation results."""
+    bills = tmp_path / "bills"
+    bills.mkdir()
+    invoice = tmp_path / "invoice"
+    invoice.mkdir()
+    bank_pdf = tmp_path / "statement.pdf"
+    bank_pdf.write_bytes(b"%PDF-1.4 fake")
+    
+    with patch("src.main.compiled.invoke") as mock_invoke:
+        mock_invoke.return_value = {"agent_response": "Done"}
+        
+        response = await async_client.post(
+            "/reconcile-from-folder",
+            data={
+                "folder_path": str(tmp_path),
+                "user_prompt": "Reconcile",
+            },
+        )
+    
+    assert response.status_code == 200
+    assert "agent_response" in response.json()
+
+
+@pytest.mark.asyncio
+async def test_reconcile_endpoint_missing_folder(async_client):
+    """Should return 400 if folder doesn't exist."""
+    response = await async_client.post(
+        "/reconcile-from-folder",
+        data={"folder_path": "/nonexistent/path"},
+    )
+    
+    assert response.status_code == 400
+```
+
+## What to Test
+
+### Must test:
+- LangGraph node state transitions (input → output mapping)
+- FastAPI endpoint request validation (400 errors)
+- Agent factory configuration (correct params passed)
+- Error handling paths (LLM failures, missing files)
+- Pydantic model validation (field validators)
+
+### Mock:
+- LLM API calls (expensive, slow, non-deterministic)
+- File system operations (use `tmp_path` fixture)
+- External services (LangSmith, etc.)
+
+### Don't mock:
+- Pydantic validation logic
+- Path resolution logic
+- Pure business logic functions
+
+## Running Tests
+
+```bash
+# All tests
+pytest
+
+# With coverage
+pytest --cov=src --cov-report=term-missing
+
+# Skip slow LLM tests
+pytest -m "not slow"
+
+# Specific file
+pytest tests/unit/test_recon_graph.py -v
+
+# With output
+pytest -s --log-cli-level=DEBUG
+```
+
+## Test Naming Convention
+
+```python
+def test_<unit>_<scenario>_<expected_behavior>():
+    """<Unit> should <expected behavior> when <scenario>."""
+```
+
+Examples:
+- `test_node_recon_returns_response_on_success`
+- `test_reconcile_endpoint_returns_400_for_missing_folder`
+- `test_claude_agent_factory_uses_correct_model`

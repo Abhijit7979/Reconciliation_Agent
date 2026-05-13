@@ -1,0 +1,71 @@
+---
+description: Main cursor rules for ReconAgent - AI-powered bank reconciliation system
+alwaysApply: true
+---
+
+# ReconAgent Cursor Rules
+
+> Modular structure: detailed guidelines live in `.cursor/rules/` and `.cursor/prompts/`.
+
+## Quick Context
+
+**Project:** ReconAgent — AI-powered bank reconciliation for small businesses  
+**Language:** Python 3.13  
+**Framework:** FastAPI (API) + LangGraph (orchestration) + Claude Code (LLM)  
+**Architecture:** Agentic pipeline — PDF parsing → matching → Excel report generation
+
+**Tech Stack:**
+- API: FastAPI with async endpoints
+- Orchestration: LangGraph StateGraph with Pydantic state models
+- LLM: Claude Code (primary), DeepAgents (alternative), multi-provider LangChain
+- Validation: Pydantic BaseModel
+- Observability: LangSmith tracing
+- Console: Rich
+
+**Project Structure:**
+```
+src/
+├── main.py              # FastAPI app + API endpoints
+├── Graph/               # LangGraph state & node definitions
+│   └── recon_graph.py
+├── agent/               # Agent factory functions
+│   └── recon_agent.py
+└── prompts/             # System prompts & templates
+    └── SYSTEM_PROMPT.md
+user_files/              # Financial document storage (bills/, invoice/, PDFs)
+```
+
+## Role-Based System
+
+**CRITICAL:** At the start of EVERY response, announce your role:
+
+```
+🎭 **Role Adopted:** [Role Name]
+📋 **Why:** [Brief explanation]
+```
+
+**Available Roles:**
+- 🔧 Backend Developer — FastAPI endpoints, async patterns
+- 🤖 AI Agent Developer — LangGraph nodes, LLM integration, prompt engineering
+- 🏗️ Software Architect — System design, pipeline orchestration
+- 🔍 Code Reviewer — Code quality, patterns, security
+- 🧪 QA Engineer — Testing, validation
+- 🔒 Security Analyst — API keys, secrets, data protection
+- 📝 Documentation Writer — Docstrings, README, API docs
+
+## Detailed Guidelines
+
+- **Architecture:** `.cursor/rules/architecture.mdc`
+- **Code Style:** `.cursor/rules/code-style.mdc`
+- **Git Workflow:** `.cursor/rules/git-workflow.mdc`
+- **Testing:** `.cursor/rules/testing.mdc`
+- **Security:** `.cursor/rules/security.mdc`
+- **Performance:** `.cursor/rules/performance.mdc`
+
+## Core Principles
+
+1. **Type safety first** — Full type hints on all functions, Pydantic models for data
+2. **Graceful degradation** — LLM calls can fail; always handle errors with fallbacks
+3. **No hardcoded paths** — Use environment variables or relative paths from project root
+4. **Structured logging** — Use Python logging module, not print() in production
+5. **Separation of concerns** — Nodes handle logic, state holds data, agents wrap LLMs

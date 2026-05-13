@@ -1,0 +1,155 @@
+{
+  "evaluator": "Claude Sonnet 4.6",
+  "entity": "Arkive Technologies Pvt. Ltd.",
+  "period": "April 2025",
+  "input_files": {
+    "invoices": "user_files/invoice/ (INV-1041 to INV-1048, 8 PDFs)",
+    "bills": "user_files/bills/ (BILL-401 to BILL-408, 8 PDFs)",
+    "bank_statement": "user_files/Bank Statement from Claude.pdf"
+  },
+  "output_file": "user_files/output/Recon_Arkive_Apr2025.xlsx",
+  "evaluation_date": "2026-05-13",
+
+  "numerical_accuracy": {
+    "score": 1220,
+    "max_score": 1500,
+    "transactions_verified": 10,
+    "sample": [
+      "INV-1041 (Nexora Tech)", "INV-1043 (Orion Retail)", "INV-1046 (Greenleaf Agro)",
+      "INV-1048 (BlueSky Solutions)", "BILL-401 (TechSpark Cloud)", "BILL-402 (Payroll)",
+      "BILL-404 (Office Depot)", "BILL-405 (Reliance Power)", "BILL-407 (Skynet ISP)",
+      "REF-009 (Vendor Refund)"
+    ],
+    "errors_found": [
+      "BILL-404 — Bills & Expenses sheet shows Amount Paid = 0; however the Bank Transactions sheet correctly records a debit of Rs. 8,650 (vs bill subtotal Rs. 11,650). The Rs. 3,000 short-payment is flagged only in the Bank sheet and is completely absent from the AP ledger view — a material cross-sheet inconsistency.",
+      "INV-1048 — Invoices sheet shows Payment Received = 0 and Balance Outstanding = Rs. 40,125 (full invoice); the Bank Transactions sheet correctly records a credit of Rs. 34,000 and flags the Rs. 4 variance. The partial payment is invisible in the AR ledger view.",
+      "BILL-405 — Status field reads 'Unpaid' while Amount Paid = Rs. 10,000, Payment Date = 30 Apr 2025, and Notes = 'Reconciled'. Three data points contradict the status label — a finance professional reading the Status column would believe this bill is unpaid.",
+      "BILL-407 — Same status-field error: Status = 'Unpaid' while Amount Paid = Rs. 4,800 and Notes = 'Reconciled'.",
+      "INV-1041, INV-1043, INV-1046 — Bank receipts match invoice pre-tax subtotals exactly (Rs. 82,500 / Rs. 118,200 / Rs. 72,000). The agent marks these 'Reconciled' yet shows non-zero Balance Outstanding equal to the GST component (Rs. 14,850 / Rs. 21,276 / Rs. 12,960). No explanation is provided for why only the pre-GST amount appears in the bank or how GST will be settled — creates ambiguity on whether these are truly reconciled."
+    ],
+    "verified_correct": [
+      "Bank statement totals verified: Credits Rs. 3,23,500 | Debits Rs. 1,78,950 | Closing Rs. 4,86,550 — all arithmetic correct",
+      "AR Summary total Rs. 4,87,204 verified against sum of 8 invoice subtotals",
+      "AP Summary total Rs. 2,22,250 verified against sum of 8 bill subtotals",
+      "AR Matched Rs. 2,72,700 and AP Matched Rs. 1,37,800 verified correct",
+      "All GST calculations verified at 18% — no double-counting detected",
+      "INV-1045 Days Overdue = 18 days verified (Due: 12 Apr, Period End: 30 Apr)",
+      "BILL-404 variance Rs. 3,000 and INV-1048 variance Rs. 4 both arithmetically correct"
+    ],
+    "sub_scores": {
+      "matched_amounts_agree": "300/500 — 2 cross-sheet inconsistencies (BILL-404, INV-1048 payments not reflected in respective ledger sheets)",
+      "running_totals_and_summaries": "380/400 — formula-based totals and summary figures verified correct",
+      "gst_carry_through": "240/300 — GST correctly extracted and not double-counted; deduction for marking items 'Reconciled' with unexplained non-zero GST outstanding balance",
+      "currency_conversion": "300/300 — single-currency INR, no conversion required, full credit"
+    },
+    "notes": "Core arithmetic is solid — all bank statement figures, AR/AP summary totals, and GST calculations are verified correct. The primary weakness is cross-sheet data propagation: near-match and partial-payment entries are correctly identified in the Bank Transactions sheet but the corresponding Invoice and Bills sheets are not updated to reflect those payments, leaving the AR/AP ledger views misleadingly showing zero payments received/made."
+  },
+
+  "audit_trail": {
+    "score": 780,
+    "max_score": 1000,
+    "traceability_test_results": [
+      "INV-1043 (Orion Retail): Invoice sheet Bank Ref = 'INV-1043' → located in Bank Transactions sheet row 7, RTGS credit Rs. 1,18,200 on 14 Apr → traceable to 'Fake Financial Data Invoices-3.pdf'. Reference IDs consistent. PASS (<60s).",
+      "BILL-402 (Payroll): Bills sheet Bank Ref = 'BILL-402' → located in Bank Transactions sheet row 4, Transfer debit Rs. 95,000 on 01 Apr → traceable to 'Claude Fake Financial Data-2.pdf'. PASS (<60s).",
+      "REF-009 (Vendor Refund): Bank Transactions sheet row 11 — Notes clearly state 'No matching invoice — vendor refund, no source document found'. Unambiguously isolated with correct reason code. PASS."
+    ],
+    "missing_references": [
+      "No page numbers or line numbers are cited in any matched row across all sheets. A formal audit requires specific page/line references to the source PDFs — an auditor must manually scan each PDF to locate the transaction.",
+      "Source document file names are absent from the output. Only internal reference IDs (INV-xxxx, BILL-xxx) are used; the mapping to actual PDF filenames is implicit, not documented.",
+      "No explicit 'Reconciliation Status: Balanced / Unbalanced' field on the Summary Dashboard.",
+      "No net total variance figure on the Summary Dashboard — only counts and subtotals are presented; overall open exposure is not summed."
+    ],
+    "sub_scores": {
+      "matched_row_source_references": "180/300 — transaction IDs present and consistent across all sheets; page/line numbers and source file names absent",
+      "unmatched_reason_codes": "290/300 — all 12 unmatched items carry clear reason codes: 'No bank credit found', 'No bank debit found – overdue', 'No matching invoice — vendor refund', 'Possible advance/deposit', 'Bank fee — no supporting bill', 'Journal adjustment — no supporting document'",
+      "traceability_test_3_rows": "160/200 — reference IDs enable cross-sheet navigation in under 60 seconds; absence of page numbers adds friction for source-document lookup",
+      "net_reconciliation_position": "150/200 — counts and totals visible in Summary Dashboard; missing explicit Balanced/Unbalanced stamp and total net open variance figure"
+    },
+    "notes": "Reason codes on unmatched items are a clear strength — every bank-only, invoice-only, and bill-only entry has a descriptive human-readable note. Cross-sheet reference consistency via transaction IDs enables navigation. Key gap for audit-grade output is the absence of page/line number citations and source PDF file name references, which are required for a signed-off audit trail."
+  },
+
+  "edge_case_coverage": {
+    "score": 480,
+    "max_score": 800,
+    "cases_tested": [
+      {
+        "case": "Partial payment",
+        "scenario_found": "BILL-404 (Office Depot): Bank debit Rs. 8,650 vs Bill subtotal Rs. 11,650 — Rs. 3,000 short.",
+        "agent_handling": "Bank Transactions sheet correctly identifies mismatch: Reconciled = No, Variance = 3,000, Notes = 'partial payment? Refer for human review'. However, the Bills & Expenses sheet shows Amount Paid = 0 and Balance Remaining = Rs. 13,747 (full amount) — the AP ledger does not reflect the partial payment actually made.",
+        "score": "100/200 — detected in Bank sheet, not propagated to Bills sheet"
+      },
+      {
+        "case": "Duplicate invoice",
+        "scenario_found": "Not present in input data. INV-1042 and INV-1048 are distinct invoice numbers both billed to BlueSky Solutions — correctly treated as separate invoices, no false duplicate flag raised.",
+        "agent_handling": "Cannot evaluate — edge case not in test dataset.",
+        "score": "0/200 — not testable"
+      },
+      {
+        "case": "Date mismatch / late payment",
+        "scenario_found": "INV-1045 (Vertex Media Works): Issued 12 Mar 2025, Due 12 Apr 2025, no bank receipt as of 30 Apr 2025 = 18 days overdue. BILL-403 (due 20 Apr) and BILL-408 (due 18 Apr) also overdue with no bank debits.",
+        "agent_handling": "INV-1045 correctly shows Status = 'Overdue', Days Overdue = 18 (verified). BILL-403 and BILL-408 correctly flagged 'Overdue'. BILL-405 was paid late (due 25 Apr, paid 30 Apr) but the 5-day late payment is not flagged — minor miss.",
+        "score": "190/200 — strong overdue detection; minor miss on BILL-405 late-payment flag"
+      },
+      {
+        "case": "Missing document (one source with no match in others)",
+        "scenario_found": "REF-009 (vendor refund credit Rs. 4,800), BNK-CHG (bank fee Rs. 2,500), INT-APR (interest Rs. 12,000), ADJ-007 (journal adjustment Rs. 10,800) — all bank entries with no supporting invoice or bill.",
+        "agent_handling": "All four correctly isolated with descriptive reason codes. ADV-012 (Digital Adworks deposit Rs. 19,200) tentatively linked to BILL-406 with note 'possible advance/deposit' — appropriate handling given no exact match.",
+        "score": "190/200 — clean isolation of all no-match bank entries with appropriate labeling"
+      }
+    ],
+    "cases_failed": [
+      "Partial payment (BILL-404): Detected in Bank sheet but Bills sheet still shows zero payment — AP ledger is incorrect for this transaction.",
+      "Duplicate invoice: Edge case absent from test dataset — cannot score.",
+      "INV-1047 (Draft): Draft invoice subtotal Rs. 53,400 is included in the AR Total on the Summary Dashboard (Rs. 4,87,204). Draft invoices should be excluded from reconciliation until formally issued — inflates the AR figure."
+    ],
+    "notes": "Overdue detection and missing-document isolation are clear strengths. Partial payment handling works at the detection layer (Bank sheet) but fails at the propagation layer (Bills sheet). The draft invoice inclusion in AR totals is a domain-knowledge gap. Duplicate invoice detection was not exercised by the test data."
+  },
+
+  "output_usability": {
+    "score": 560,
+    "max_score": 700,
+    "column_naming_pass": true,
+    "finance_ready": false,
+    "sub_scores": {
+      "column_headers_standard": "200/200 — Invoice No., Invoice Date, Due Date, Customer, Invoice Amount, Tax Amount, Total Due, Payment Received, Balance Outstanding, Days Overdue; Debit, Credit, Running Balance, Variance — all standard accounting terminology, zero developer-style names",
+      "unmatched_items_immediately_visible": "80/200 — no dedicated 'Unmatched Items' sheet and no visual highlighting; unmatched rows are embedded within each sheet requiring manual column filtering to isolate; a finance professional would not immediately see open items",
+      "summary_sheet_one_screen": "130/150 — Summary Dashboard shows AR/AP totals, matched vs open counts, bank movement, and liquidity pulse in a clean layout readable in under 2 minutes; missing: explicit Balanced/Unbalanced stamp and total open exposure sum",
+      "no_raw_artifacts": "150/150 — no JSON strings, no file paths, no debug text found in any cell; output is clean"
+    },
+    "positives": [
+      "Four well-named sheets with emoji separators provide clear navigation",
+      "Summary Dashboard readable by a finance manager without any technical context",
+      "Running Balance column in Bank Transactions sheet matches source statement exactly",
+      "Notes column provides human-readable context on every flagged item"
+    ],
+    "issues": [
+      "No dedicated 'Unmatched / Open Items' sheet — most critical gap for finance usability",
+      "BILL-405 and BILL-407 show Status = 'Unpaid' despite confirmed payments — would trigger unnecessary follow-up by a finance team",
+      "Matched items with non-zero 'Balance Outstanding' (GST portion) labeled 'Reconciled' — confusing for a finance professional expecting zero balance on reconciled items",
+      "No aging buckets (0-30, 31-60, 61-90 days) for overdue receivables/payables"
+    ],
+    "notes": "Column naming and clean output are well-executed. The Summary Dashboard is usable. Finance-ready flag is false primarily because unmatched items are not surfaced without filtering, and two paid bills display 'Unpaid' status — both create unnecessary noise for a finance team doing month-end close."
+  },
+
+  "total_claude_score": 3040,
+  "max_possible_score": 4000,
+  "percentage": "76.0%",
+
+  "open_discrepancies": [
+    "BILL-404 (Office Depot): Bank debit Rs. 8,650 vs Bill subtotal Rs. 11,650 — Rs. 3,000 gap. Partial payment not reflected in Bills sheet (shows Amount Paid = 0). Requires vendor confirmation of outstanding Rs. 3,000.",
+    "INV-1048 (BlueSky Solutions): Bank credit Rs. 34,000 vs Invoice subtotal Rs. 34,004 — Rs. 4 rounding variance. Payment not reflected in Invoice sheet (shows Payment Received = 0). Likely a rounding error; confirm with customer.",
+    "BILL-405 (Reliance Power): Status field incorrectly shows 'Unpaid' despite Amount Paid = Rs. 10,000 confirmed. Also paid 5 days after due date (due 25 Apr, paid 30 Apr) — late payment not flagged.",
+    "BILL-407 (Skynet ISP): Status field incorrectly shows 'Unpaid' despite Amount Paid = Rs. 4,800 confirmed.",
+    "INV-1041 / INV-1043 / INV-1046: Balance Outstanding equals GST amounts (Rs. 14,850 / Rs. 21,276 / Rs. 12,960) while marked 'Reconciled'. GST settlement mechanism (ITC or direct payment) not documented — auditor cannot confirm full discharge.",
+    "BILL-401 / BILL-402: Same GST-as-outstanding issue on paid bills.",
+    "ADV-012 (Digital Adworks deposit): Debit Rs. 19,200 tentatively linked to BILL-406 (Rs. 38,400) as a possible advance — no advance payment document exists. 50% of bill amount paid; remaining Rs. 19,200 unaccounted.",
+    "REF-009: Vendor refund credit Rs. 4,800 with no source document — vendor identity and refund basis unverified.",
+    "INV-1047 (Silverline Constructions, Draft): Draft invoice subtotal Rs. 53,400 incorrectly included in AR Total (Rs. 4,87,204) — should be excluded until invoice is formally issued.",
+    "INV-1045 (Vertex Media Works): Rs. 57,230 receivable is 18 days overdue with no bank receipt — high collection risk; no escalation flag or aging bucket in output.",
+    "BILL-403 (QuickCourier, Overdue Rs. 14,160) + BILL-408 (Mahesh & Associates, Overdue Rs. 26,432): Combined Rs. 40,592 in overdue payables with no corresponding bank debits — vendor dispute or cash flow issue; requires immediate AP follow-up.",
+    "ADJ-007 (Closing misc. adjustment Rs. 10,800): Journal debit with no supporting document — needs finance controller sign-off."
+  ],
+
+  "verdict": "Needs Improvement",
+  "verdict_rationale": "The agent scores 3040/4000 (76%). Core arithmetic and bank statement reconciliation are accurate. Overdue detection, unmatched-item isolation, and reason-code coverage are strong. The output falls short of 'Pass' on three grounds: (1) cross-sheet data propagation failures — partial payments flagged in the Bank sheet are not carried through to the Invoice/Bills sheets, creating an inconsistent picture across the workbook; (2) two status field errors (BILL-405, BILL-407 showing 'Unpaid' for confirmed payments) that would misdirect a finance team; and (3) absence of a dedicated unmatched-items view and audit-grade page/line number citations. Addressing these three areas would likely push the score to the 'Pass' threshold."
+}

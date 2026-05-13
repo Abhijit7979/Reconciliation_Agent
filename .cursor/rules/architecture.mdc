@@ -1,0 +1,233 @@
+---
+description: Architecture patterns for ReconAgent - FastAPI + LangGraph + Claude Code
+globs: ["src/**/*.py"]
+---
+
+# Architecture Patterns
+
+## System Architecture
+
+ReconAgent follows an **agentic pipeline** architecture:
+
+```
+[FastAPI Endpoint] → [LangGraph StateGraph] → [Agent Node] → [LLM (Claude Code)] → [Excel Output]
+```
+
+**Key Layers:**
+1. **API Layer** (`src/main.py`) — HTTP interface, request validation, file orchestration
+2. **Graph Layer** (`src/Graph/`) — LangGraph workflow, state transitions, node composition
+3. **Agent Layer** (`src/agent/`) — LLM client factories, model configuration
+4. **Prompt Layer** (`src/prompts/`) — System prompts, templates, skills
+
+## LangGraph Patterns
+
+### State Design (Pydantic BaseModel)
+
+All graph state MUST use Pydantic models with explicit Field descriptions:
+
+```python
+from pydantic import BaseModel, Field
+from typing import Optional, List
+from enum import Enum
+
+class ReconciliationStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+class ReconState(BaseModel):
+    """State flowing through the reconciliation graph."""
+    
+    user_prompt: str = Field(description="User's reconciliation instruction")
+    bill_dir: Path = Field(description="Directory containing vendor bills")
+    invoice_dir: Path = Field(description="Directory containing invoices")
+    bank_statement: Path = Field(description="Path to bank statement PDF")
+    reference_template: Path = Field(description="Excel template path")
+    output_dir: Path = Field(description="Output directory for results")
+    status: ReconciliationStatus = Field(default=ReconciliationStatus.PENDING)
+    agent_response: str = Field(default="", description="LLM agent output")
+    error: Optional[str] = Field(default=None, description="Error message if failed")
+```
+
+### Node Functions
+
+Nodes are pure functions that receive state and return partial state updates:
+
+```python
+def node_name(state: ReconState) -> dict:
+    """
+    Brief description of what this node does.
+    
+    Args:
+        state: Current graph state
+        
+    Returns:
+        Partial state update dictionary
+    """
+    try:
+        # Node logic here
+        result = process(state)
+        return {"agent_response": result, "status": ReconciliationStatus.COMPLETED}
+    except Exception as e:
+        logger.error(f"Node failed: {e}", exc_info=True)
+        return {"error": str(e), "status": ReconciliationStatus.FAILED}
+```
+
+### Graph Composition
+
+```python
+from langgraph.graph import StateGraph, START, END
+
+def build_recon_graph() -> StateGraph:
+    """Build and return the compiled reconciliation graph."""
+    graph = StateGraph(ReconState)
+    
+    graph.add_node("validate", node_validate_inputs)
+    graph.add_node("reconcile", node_reconcile)
+    graph.add_node("report", node_generate_report)
+    
+    graph.add_edge(START, "validate")
+    graph.add_conditional_edges(
+        "validate",
+        should_proceed,
+        {"proceed": "reconcile", "abort": END}
+    )
+    graph.add_edge("reconcile", "report")
+    graph.add_edge("report", END)
+    
+    return graph.compile()
+```
+
+## FastAPI Patterns
+
+### Endpoint Design
+
+```python
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, validator
+import logging
+
+logger = logging.getLogger(__name__)
+
+class ReconcileRequest(BaseModel):
+    """Request model for reconciliation endpoint."""
+    folder_path: str
+    user_prompt: str = "Please reconcile the provided financial documents."
+    
+    @validator("folder_path")
+    def validate_folder_exists(cls, v: str) -> str:
+        path = Path(v).expanduser().resolve()
+        if not path.is_dir():
+            raise ValueError(f"Directory not found: {path}")
+        return str(path)
+
+class ReconcileResponse(BaseModel):
+    """Response model for reconciliation endpoint."""
+    session_dir: str
+    output_dir: str
+    bank_statement: str
+    agent_response: str
+    status: str
+
+@app.post("/reconcile", response_model=ReconcileResponse)
+async def reconcile(request: ReconcileRequest) -> ReconcileResponse:
+    """Run reconciliation on provided folder."""
+    try:
+        result = await asyncio.to_thread(compiled_graph.invoke, initial_state)
+        return ReconcileResponse(**result)
+    except Exception as e:
+        logger.error(f"Reconciliation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+```
+
+### Dependency Injection
+
+Use FastAPI's `Depends` for shared resources:
+
+```python
+from functools import lru_cache
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+def get_graph(settings: Settings = Depends(get_settings)) -> CompiledGraph:
+    return build_recon_graph()
+```
+
+## Agent Factory Pattern
+
+Agent factories should be proper functions with clear interfaces:
+
+```python
+from typing import Protocol
+
+class AgentProtocol(Protocol):
+    """Interface that all agents must implement."""
+    def stream(self, prompt: str) -> Iterator[str]: ...
+    def invoke(self, prompt: str) -> str: ...
+
+def create_claude_agent(
+    model: str = "claude-sonnet-4-6",
+    working_dir: Path | None = None,
+    max_budget_usd: float = 2.0,
+) -> ClaudeCodeChatModel:
+    """
+    Create a Claude Code agent for reconciliation.
+    
+    Args:
+        model: Claude model identifier
+        working_dir: Agent's working directory for file access
+        max_budget_usd: Maximum spend per invocation
+        
+    Returns:
+        Configured ClaudeCodeChatModel instance
+    """
+    settings = get_settings()
+    return ClaudeCodeChatModel(
+        name="recon_agent",
+        model=model,
+        permission_mode="bypassPermissions",
+        cwd=str(working_dir or settings.user_files_dir),
+        system_prompt=SYSTEM_PROMPT,
+        max_budget_usd=max_budget_usd,
+        oauth_token=settings.claude_oauth_token,
+    )
+```
+
+## File Organization Rules
+
+- `src/main.py` — Only FastAPI app definition and endpoint registration
+- `src/Graph/` — All LangGraph state models, nodes, and graph builders
+- `src/agent/` — Agent factory functions and LLM configuration
+- `src/prompts/` — System prompts, prompt templates, and skills
+- `src/models/` — Shared Pydantic models (request/response schemas)
+- `src/services/` — Business logic not tied to LangGraph nodes
+- `src/config.py` — Settings class using pydantic-settings
+- `tests/` — Mirror src/ structure with test_ prefix
+
+## Import Conventions
+
+```python
+# Standard library
+import asyncio
+import logging
+from pathlib import Path
+from typing import Optional, List, Iterator
+
+# Third-party
+from fastapi import FastAPI, HTTPException, Depends
+from pydantic import BaseModel, Field
+from langgraph.graph import StateGraph, START, END
+from langchain_core.prompts import ChatPromptTemplate
+from rich.console import Console
+
+# Local
+from src.Graph.recon_graph import ReconState, build_recon_graph
+from src.agent.recon_agent import create_claude_agent
+from src.config import get_settings
+```
+
+Import order: stdlib → third-party → local, separated by blank lines.

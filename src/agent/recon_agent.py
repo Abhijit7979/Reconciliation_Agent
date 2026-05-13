@@ -30,7 +30,7 @@ def ClaudeAgent(llm:str="claude-haiku-4-5-20251001", file_path:str="/Users/abhi/
     system_prompt=SYSTEM_PROMPT,
     max_budget_usd=2,
     oauth_token=os.getenv("CLAUDE_CODE_OAUTH_TOKEN"),
-    skills=["/prompts/reconciliation/SKILL.md"],
+    skills=["/prompts/reconciliation/"],
     )
 
     return agent

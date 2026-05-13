@@ -1,0 +1,215 @@
+---
+description: Security best practices for API keys, secrets, and financial data handling
+globs: ["**/*.py", "**/.env*", "**/config*"]
+---
+
+# Security Best Practices
+
+## Secrets Management
+
+### Never hardcode secrets or paths
+
+```python
+# BAD - hardcoded API key
+os.environ["OPENAI_API_KEY"] = "sk-abc123..."
+
+# BAD - hardcoded user paths
+file_path = "/Users/abhi/Documents/MS_USA/main_agent_recon/user_files"
+
+# GOOD - environment-based configuration
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    """Application settings loaded from environment."""
+    
+    openai_api_key: str
+    claude_oauth_token: str
+    groq_api_key: str | None = None
+    openrouter_api_key: str | None = None
+    
+    recon_model: str = "claude-sonnet-4-6"
+    user_files_dir: Path = Path("user_files")
+    max_agent_budget_usd: float = 2.0
+    
+    langsmith_tracing: bool = False
+    langsmith_api_key: str | None = None
+    langsmith_project: str = "recon-agent"
+    
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+```
+
+### Environment file rules
+
+- `.env` — NEVER commit (add to `.gitignore`)
+- `.env.example` — Commit this with placeholder values
+- Use `python-dotenv` only at app entry point, never in library code
+
+```bash
+# .env.example (safe to commit)
+OPENAI_API_KEY=sk-your-key-here
+CLAUDE_CODE_OAUTH_TOKEN=your-token-here
+RECON_OPENAI_MODEL=claude-sonnet-4-6
+LANGSMITH_TRACING=false
+LANGSMITH_API_KEY=
+LANGSMITH_PROJECT=recon-agent
+GROQ_API_KEY=
+OPENROUTER_API_KEY=
+```
+
+### .gitignore must include:
+
+```gitignore
+.env
+*.env
+.env.*
+!.env.example
+__pycache__/
+venv/
+user_files/
+output/
+*.pdf
+*.xlsx
+!src/prompts/sample_template.xlsx
+```
+
+## Financial Data Protection
+
+### Rules for handling financial documents:
+
+1. **Never log financial content** — No logging of PDF text, amounts, or account numbers
+2. **Minimize data in responses** — API responses should contain status and paths, not document content
+3. **Clean up temp files** — Remove intermediate parsed data after processing
+4. **No PII in logs** — Never log customer names, account numbers, or transaction details
+5. **Scope file access** — Agents should only access their session directory
+
+```python
+# BAD - logging financial data
+logger.info(f"Parsed invoice: amount={amount}, account={account_num}")
+
+# GOOD - logging operational data only
+logger.info(f"Parsed invoice: file={filename}, fields_extracted=5")
+```
+
+### Agent sandboxing:
+
+```python
+def create_claude_agent(working_dir: Path, ...) -> ClaudeCodeChatModel:
+    """Agent's cwd limits its file access scope."""
+    return ClaudeCodeChatModel(
+        cwd=str(working_dir),  # Agent can only access this directory
+        max_budget_usd=settings.max_agent_budget_usd,  # Cost limit
+        ...
+    )
+```
+
+## API Security
+
+### Input validation (FastAPI)
+
+```python
+from fastapi import HTTPException
+from pathlib import Path
+
+def validate_folder_path(folder_path: str) -> Path:
+    """
+    Validate folder path is safe and exists.
+    
+    Prevents path traversal attacks and access to system directories.
+    """
+    resolved = Path(folder_path).expanduser().resolve()
+    
+    # Prevent path traversal
+    allowed_root = Path(settings.user_files_dir).resolve()
+    if not str(resolved).startswith(str(allowed_root)):
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied: path outside allowed directory",
+        )
+    
+    if not resolved.is_dir():
+        raise HTTPException(status_code=400, detail=f"Directory not found: {resolved}")
+    
+    return resolved
+```
+
+### Rate limiting
+
+```python
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+
+@app.post("/reconcile-from-folder")
+@limiter.limit("5/minute")
+async def reconcile_from_folder(...):
+    ...
+```
+
+### CORS configuration
+
+```python
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins,  # Never use ["*"] in production
+    allow_methods=["POST"],
+    allow_headers=["Content-Type", "Authorization"],
+)
+```
+
+## LLM Security
+
+### Budget controls
+
+- Always set `max_budget_usd` on agents
+- Log token usage per request
+- Alert on unusual cost spikes
+
+### Prompt injection defense
+
+- System prompts are in read-only files (`src/prompts/`)
+- User prompts should be clearly delineated in the template
+- Never interpolate user input directly into system prompts
+
+```python
+# GOOD - user input in designated variable
+prompt = ChatPromptTemplate.from_template(
+    """[SYSTEM INSTRUCTIONS]
+    {system_instructions}
+    
+    [USER REQUEST]
+    {user_prompt}
+    """
+)
+
+# BAD - user input mixed with instructions
+prompt = f"You are an agent. {user_input}. Always output JSON."
+```
+
+## Dependency Security
+
+```bash
+# Audit dependencies regularly
+pip-audit
+
+# Pin exact versions in production
+pip freeze > requirements.lock
+
+# Update dependencies monthly
+pip install --upgrade -r requirements.txt
+pip-audit
+```
+
+## Security Checklist
+
+Before every PR:
+
+- [ ] No API keys or tokens in code
+- [ ] No hardcoded absolute paths
+- [ ] File paths validated against allowed roots
+- [ ] No financial data in log output
+- [ ] Agent budget limits set
+- [ ] .env not staged in git
+- [ ] User input properly sandboxed in prompts

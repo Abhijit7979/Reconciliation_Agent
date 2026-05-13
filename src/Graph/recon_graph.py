@@ -3,6 +3,8 @@ from pydantic import BaseModel, Field
 from src.agent.recon_agent import ClaudeAgent
 from rich import print
 from langchain_core.prompts import ChatPromptTemplate
+
+
 class ReconGraph(BaseModel):
     user_prompt: str = Field(description="The user prompt for the reconciliation")
     output: str = Field(description="The output of the reconciliation file path")
@@ -28,7 +30,7 @@ def node_recon(state: ReconGraph):
         4. {reference_excel} excel file path 
         5. {output} output file saving path
 
-        ouput only excel sheet by copying reference excel sheet and adding data
+        Use skill reconciliation
         """
     )
 
@@ -41,13 +43,14 @@ def node_recon(state: ReconGraph):
     collected = []
     for chunk in agent_response:
         text = chunk
+        print(chunk)
         if not isinstance(text, str):
             text = str(text)
         collected.append(text)
-        print(text, flush=True)
+        # print(text)
     print()
 
-    return {"agent_response": "".join(collected)}
+    return {"agent_response": "".join(collected[-1])}
 
 
     

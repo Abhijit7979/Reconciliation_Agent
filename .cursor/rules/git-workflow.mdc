@@ -1,0 +1,129 @@
+---
+description: Git workflow - branching strategy and commit conventions
+globs: []
+---
+
+# Git Workflow
+
+## Branch Strategy
+
+```
+main              ← Production-ready, always deployable
+  ↑
+develop           ← Integration branch, staging
+  ↑
+feature/*         ← New features
+fix/*             ← Bug fixes
+refactor/*        ← Code improvements
+docs/*            ← Documentation changes
+```
+
+### Branch Naming
+
+```bash
+feature/add-multi-currency-support
+feature/streaming-websocket-endpoint
+fix/pdf-parsing-amount-extraction
+refactor/agent-factory-pattern
+docs/api-endpoint-documentation
+```
+
+### Workflow
+
+```bash
+# Start new feature
+git checkout develop
+git pull origin develop
+git checkout -b feature/add-batch-reconciliation
+
+# Work on feature (commit frequently)
+git add .
+git commit -m "feat(graph): add batch reconciliation node"
+
+# Push and create PR
+git push -u origin feature/add-batch-reconciliation
+# Create PR → develop
+
+# After PR approval and merge
+git checkout develop
+git pull origin develop
+git branch -d feature/add-batch-reconciliation
+```
+
+## Commit Message Format
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+<type>(<scope>): <short description>
+
+[optional body - explain WHY, not WHAT]
+
+[optional footer - breaking changes, issue refs]
+```
+
+### Types
+
+| Type | When to use |
+|------|-------------|
+| `feat` | New feature or capability |
+| `fix` | Bug fix |
+| `refactor` | Code change that neither fixes nor adds feature |
+| `docs` | Documentation only |
+| `test` | Adding or updating tests |
+| `perf` | Performance improvement |
+| `chore` | Build, CI, dependency updates |
+| `style` | Formatting, no logic change |
+
+### Scopes (project-specific)
+
+| Scope | Covers |
+|-------|--------|
+| `api` | FastAPI endpoints, request/response models |
+| `graph` | LangGraph state, nodes, graph composition |
+| `agent` | Agent factories, LLM configuration |
+| `prompt` | System prompts, templates |
+| `config` | Settings, environment, configuration |
+| `deps` | Dependency changes |
+
+### Examples
+
+```bash
+feat(graph): add validation node before reconciliation
+fix(agent): handle Claude timeout with graceful fallback
+refactor(api): extract request validation into Pydantic models
+docs(prompt): update system prompt with ambiguity handling rules
+test(graph): add unit tests for node_reconcile state transitions
+perf(agent): implement response streaming with chunked output
+chore(deps): update langgraph to 0.3.x
+```
+
+## Pre-commit Checklist
+
+Before every commit:
+
+- [ ] Type hints on all new/modified functions
+- [ ] Docstrings on all public functions
+- [ ] No hardcoded paths or API keys
+- [ ] Logging instead of print()
+- [ ] Tests pass (when test suite exists)
+- [ ] No `.env` or sensitive files staged
+
+## Versioning
+
+Use [Semantic Versioning](https://semver.org/):
+
+```
+MAJOR.MINOR.PATCH
+
+0.1.0  → Initial working prototype
+0.2.0  → Added new endpoint or feature
+0.2.1  → Bug fix
+1.0.0  → Production-ready release
+```
+
+Tag releases:
+```bash
+git tag -a v0.1.0 -m "feat: initial reconciliation pipeline"
+git push origin v0.1.0
+```

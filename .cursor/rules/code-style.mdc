@@ -1,0 +1,229 @@
+---
+description: Python code style guidelines - PEP 8, type hints, documentation standards
+globs: ["**/*.py"]
+---
+
+# Code Style Guidelines
+
+## Naming Conventions
+
+| Element | Convention | Example |
+|---------|-----------|---------|
+| Functions | snake_case | `create_claude_agent()`, `node_reconcile()` |
+| Variables | snake_case | `file_path`, `agent_response` |
+| Constants | UPPER_SNAKE_CASE | `MAX_RETRIES`, `DEFAULT_MODEL` |
+| Classes | PascalCase | `ReconState`, `ReconcileRequest` |
+| Modules | snake_case | `recon_graph.py`, `recon_agent.py` |
+| Pydantic Fields | snake_case | `user_prompt`, `bank_statement` |
+| LangGraph Nodes | `node_` prefix | `node_validate`, `node_reconcile` |
+| Factory Functions | `create_` prefix | `create_claude_agent()`, `create_deep_agent()` |
+| Private | `_` prefix | `_parse_pdf()`, `_normalize_reference()` |
+
+## Type Hints
+
+All functions MUST have complete type annotations:
+
+```python
+from typing import Optional, List, Dict, Iterator, Any
+from pathlib import Path
+
+def create_claude_agent(
+    model: str = "claude-sonnet-4-6",
+    working_dir: Path | None = None,
+    max_budget_usd: float = 2.0,
+) -> ClaudeCodeChatModel:
+    """Create a configured Claude agent."""
+    ...
+
+async def reconcile_from_folder(
+    folder_path: str,
+    user_prompt: str = "Please reconcile the provided financial documents.",
+) -> ReconcileResponse:
+    """Run reconciliation on a folder of financial documents."""
+    ...
+```
+
+### Type hint rules:
+- Use `Path` over `str` for file system paths in function bodies
+- Use `str` for Pydantic model fields that represent paths (serialization)
+- Use `X | None` over `Optional[X]` (Python 3.10+)
+- Use `list[str]` over `List[str]` (Python 3.9+)
+- Use `dict[str, Any]` over `Dict[str, Any]`
+- Return type is mandatory — use `-> None` for void functions
+
+## Documentation
+
+### Docstrings (Google style)
+
+Every public function, class, and module must have a docstring:
+
+```python
+def node_reconcile(state: ReconState) -> dict[str, Any]:
+    """
+    Execute reconciliation by matching bank lines to documents.
+    
+    Invokes the Claude agent with formatted prompt containing all file
+    paths, streams the response, and collects the output.
+    
+    Args:
+        state: Current reconciliation state with file paths and prompt.
+        
+    Returns:
+        Partial state update with agent_response and status fields.
+        
+    Raises:
+        AgentTimeoutError: If the LLM does not respond within budget.
+        FileNotFoundError: If required document paths are invalid.
+    """
+```
+
+### When to write docstrings:
+- All public functions and methods
+- All classes (describe purpose, not implementation)
+- All modules (top of file, describe what the module provides)
+- Complex private functions (if logic is non-obvious)
+
+### When NOT to write docstrings:
+- Trivial getters/setters
+- Test functions (the test name should be descriptive enough)
+- Single-line lambdas
+
+## Error Handling
+
+### Pattern: Try-except with structured logging
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+def node_reconcile(state: ReconState) -> dict[str, Any]:
+    """Execute reconciliation agent."""
+    try:
+        agent = create_claude_agent(
+            model=state.model,
+            working_dir=Path(state.file_path),
+        )
+        response = agent.invoke(state.formatted_prompt)
+        return {"agent_response": response, "status": "completed"}
+        
+    except TimeoutError:
+        logger.warning("Agent timed out", extra={"state_id": state.id})
+        return {"error": "Agent timed out", "status": "failed"}
+        
+    except Exception as e:
+        logger.error(
+            f"Reconciliation node failed: {e}",
+            exc_info=True,
+            extra={"state_id": state.id},
+        )
+        return {"error": str(e), "status": "failed"}
+```
+
+### Rules:
+- Catch specific exceptions before generic `Exception`
+- Always log errors with `exc_info=True` for stack traces
+- Return structured error state from LangGraph nodes (never raise)
+- Use `HTTPException` in FastAPI endpoints for client errors
+- Never silently swallow exceptions
+
+## Logging
+
+Use Python's `logging` module, never `print()` in production code:
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Levels
+logger.debug("Parsing PDF: %s", file_path)
+logger.info("Reconciliation started for session %s", session_id)
+logger.warning("Multiple PDFs found, using first: %s", pdf_path)
+logger.error("Agent failed: %s", error, exc_info=True)
+```
+
+### Rich console is acceptable for:
+- CLI-mode output (when running directly, not via API)
+- Development/debugging (guarded by `if settings.debug:`)
+
+## Pydantic Models
+
+```python
+from pydantic import BaseModel, Field, validator
+from pathlib import Path
+
+class ReconState(BaseModel):
+    """State model for the reconciliation graph."""
+    
+    user_prompt: str = Field(description="User's reconciliation instruction")
+    output_dir: str = Field(description="Path to output directory")
+    status: str = Field(default="pending", description="Current processing status")
+    
+    model_config = {"str_strip_whitespace": True}
+    
+    @validator("output_dir")
+    def ensure_output_dir_exists(cls, v: str) -> str:
+        Path(v).mkdir(parents=True, exist_ok=True)
+        return v
+```
+
+## String Formatting
+
+Always use f-strings for interpolation:
+
+```python
+# Good
+logger.info(f"Processing {len(files)} files in {directory}")
+prompt = f"Reconcile files in {state.bill_dir}"
+
+# Bad
+logger.info("Processing {} files in {}".format(len(files), directory))
+prompt = "Reconcile files in %s" % state.bill_dir
+```
+
+Exception: Use `%s` style in logging calls for lazy evaluation:
+```python
+logger.debug("Heavy computation result: %s", expensive_fn())
+```
+
+## Function Design
+
+- Maximum function length: 50 lines (excluding docstring)
+- Single responsibility: one function = one task
+- Pure functions preferred: same input = same output
+- No global mutable state
+- Early returns for guard clauses:
+
+```python
+def validate_session_dir(path: str) -> Path:
+    """Validate and return resolved session directory."""
+    session_dir = Path(path).expanduser().resolve()
+    
+    if not session_dir.is_dir():
+        raise ValueError(f"Directory not found: {session_dir}")
+    
+    if not (session_dir / "bills").is_dir():
+        raise ValueError(f"Missing 'bills' folder in {session_dir}")
+    
+    if not (session_dir / "invoice").is_dir():
+        raise ValueError(f"Missing 'invoice' folder in {session_dir}")
+    
+    return session_dir
+```
+
+## Async/Await
+
+- FastAPI endpoints are `async def`
+- Use `asyncio.to_thread()` for blocking LangGraph calls
+- Never mix sync and async without wrapping
+- Use `asyncio.gather()` for parallel operations
+
+```python
+@app.post("/reconcile")
+async def reconcile(request: ReconcileRequest) -> ReconcileResponse:
+    """Run reconciliation asynchronously."""
+    graph = build_recon_graph()
+    result = await asyncio.to_thread(graph.invoke, initial_state)
+    return ReconcileResponse(**result)
+```
