@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+import os
 import asyncio
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
@@ -11,9 +14,12 @@ from src.Graph.recon_graph import ReconGraph, node_recon
 app = FastAPI()
 
 USER_FILES_DIR = Path(__file__).resolve().parent.parent / "user_files"
-REFERENCE_EXCEL = Path(__file__).resolve().parent / "prompts" / "sample_template.xlsx"
+REFERENCE_EXCEL = Path(__file__).resolve().parent / "prompts" / "reconciliation" / "references" / "sample_template.xlsx"
 
 
+os.environ["LANGSMITH_PROJECT"] = os.getenv("LANGSMITH_PROJECT")
+os.environ["LANGSMITH_API_KEY"] = os.getenv("LANGSMITH_API_KEY")
+os.environ["LANGSMITH_TRACING"] = os.getenv("LANGSMITH_TRACING")
 
 
 @app.post("/reconcile-from-folder")

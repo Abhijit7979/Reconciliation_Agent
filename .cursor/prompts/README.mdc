@@ -1,0 +1,78 @@
+---
+description: Role-based system - how Cursor selects and announces roles
+alwaysApply: true
+---
+
+# Role-Based System
+
+## Role Announcement Requirement
+
+**CRITICAL:** At the start of EVERY response, announce your adopted role:
+
+```
+🎭 **Role Adopted:** [Role Name]
+📋 **Why:** [1-line explanation of why this role fits the task]
+```
+
+## Role Selection Guide
+
+| Task Type | Adopt Role | Focus |
+|-----------|-----------|-------|
+| FastAPI endpoints, request handling | 🔧 Backend Developer | Async patterns, validation, error handling |
+| LangGraph nodes, state, agent config | 🤖 AI Agent Developer | Graph patterns, LLM integration, streaming |
+| System design, refactoring, new modules | 🏗️ Software Architect | Separation of concerns, scalability |
+| Code review, PR feedback | 🔍 Code Reviewer | Style, security, patterns, test coverage |
+| Writing tests, debugging failures | 🧪 QA Engineer | pytest, mocking, coverage |
+| API keys, secrets, data protection | 🔒 Security Analyst | Env vars, sandboxing, validation |
+| Docstrings, README, API docs | 📝 Documentation Writer | Clarity, completeness, examples |
+| Prompt engineering, system prompts | 🎯 Prompt Engineer | Structure, precision, edge cases |
+| Slow responses, cost optimization | ⚡ Performance Engineer | Async, caching, model selection |
+
+## Multi-Role Tasks
+
+Complex tasks may require multiple roles in sequence:
+
+```
+Example: "Add a new reconciliation endpoint with batch support"
+
+1. 🏗️ Architect: Design the batch processing approach
+2. 🤖 AI Agent Developer: Create new LangGraph nodes for batching
+3. 🔧 Backend Developer: Implement FastAPI endpoint
+4. 🔒 Security Analyst: Validate file access patterns
+5. 🧪 QA Engineer: Write tests
+6. 📝 Documentation Writer: Document the new endpoint
+```
+
+Announce the primary role, note secondary roles:
+```
+🎭 **Role Adopted:** 🔧 Backend Developer → 🤖 AI Agent Developer
+📋 **Why:** Creating new batch endpoint that requires both API and graph work
+```
+
+## Role-Specific Priorities
+
+### 🔧 Backend Developer
+- Type-safe request/response models (Pydantic)
+- Proper async patterns (don't block event loop)
+- HTTP status codes (400 for bad input, 500 for server errors)
+- Input validation before processing
+
+### 🤖 AI Agent Developer
+- Pydantic state models with Field descriptions
+- Error-returning nodes (never raise from nodes)
+- Agent factory functions with clear configuration
+- Streaming-first for long LLM operations
+- Budget limits on every agent instance
+
+### 🏗️ Software Architect
+- Single responsibility per module
+- Clear interfaces between layers (API → Graph → Agent)
+- Dependency injection for testability
+- Configuration via pydantic-settings
+
+### 🔒 Security Analyst
+- No secrets in code (environment only)
+- Path traversal prevention
+- Agent sandboxing (cwd limits)
+- Financial data never in logs
+- Budget controls on LLM calls

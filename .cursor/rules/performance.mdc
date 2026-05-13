@@ -1,0 +1,239 @@
+---
+description: Performance optimization for async FastAPI, LLM streaming, and document processing
+globs: ["src/**/*.py"]
+---
+
+# Performance Optimization
+
+## Async FastAPI Patterns
+
+### Non-blocking LLM calls
+
+LangGraph's `invoke()` is synchronous. Wrap in `asyncio.to_thread()` to prevent blocking the event loop:
+
+```python
+@app.post("/reconcile")
+async def reconcile(request: ReconcileRequest) -> ReconcileResponse:
+    """Non-blocking reconciliation endpoint."""
+    graph = build_recon_graph()
+    
+    # Don't block the event loop with sync LangGraph
+    result = await asyncio.to_thread(graph.invoke, initial_state)
+    
+    return ReconcileResponse(**result)
+```
+
+### Parallel file operations
+
+When validating multiple paths, check in parallel:
+
+```python
+import asyncio
+from pathlib import Path
+
+async def validate_paths(session_dir: Path) -> dict[str, Path]:
+    """Validate all required paths exist concurrently."""
+    checks = {
+        "bills": session_dir / "bills",
+        "invoice": session_dir / "invoice",
+    }
+    
+    results = await asyncio.gather(
+        *[asyncio.to_thread(p.is_dir) for p in checks.values()]
+    )
+    
+    for (name, path), exists in zip(checks.items(), results):
+        if not exists:
+            raise HTTPException(400, f"Missing '{name}' folder in {session_dir}")
+    
+    return checks
+```
+
+## LLM Optimization
+
+### Streaming responses
+
+Stream agent output to reduce time-to-first-byte:
+
+```python
+from fastapi.responses import StreamingResponse
+
+@app.post("/reconcile-stream")
+async def reconcile_stream(request: ReconcileRequest) -> StreamingResponse:
+    """Stream reconciliation output in real-time."""
+    
+    async def generate():
+        agent = create_claude_agent(working_dir=Path(request.folder_path))
+        for chunk in agent.stream(formatted_prompt):
+            yield f"data: {chunk}\n\n"
+        yield "data: [DONE]\n\n"
+    
+    return StreamingResponse(generate(), media_type="text/event-stream")
+```
+
+### Budget-aware model selection
+
+Use cheaper models for validation, expensive ones for reconciliation:
+
+```python
+MODEL_TIERS = {
+    "validation": "claude-haiku-4-5-20251001",  # Fast, cheap
+    "reconciliation": "claude-sonnet-4-6",       # Balanced
+    "complex_audit": "claude-opus-4-7",          # Most capable
+}
+
+def select_model(document_count: int, complexity: str) -> str:
+    """Select model tier based on task complexity."""
+    if document_count <= 5:
+        return MODEL_TIERS["validation"]
+    elif complexity == "high" or document_count > 20:
+        return MODEL_TIERS["complex_audit"]
+    return MODEL_TIERS["reconciliation"]
+```
+
+### Caching system prompts
+
+System prompts should be loaded once at module level, not per-request:
+
+```python
+from functools import lru_cache
+
+@lru_cache(maxsize=1)
+def load_system_prompt() -> str:
+    """Load and cache system prompt from disk."""
+    prompt_path = Path(__file__).resolve().parent.parent / "prompts" / "SYSTEM_PROMPT.md"
+    return prompt_path.read_text()
+
+SYSTEM_PROMPT = load_system_prompt()
+```
+
+## Graph Optimization
+
+### Conditional execution
+
+Skip unnecessary nodes when possible:
+
+```python
+def should_skip_validation(state: ReconState) -> str:
+    """Skip validation if paths were pre-validated by API layer."""
+    if state.pre_validated:
+        return "reconcile"
+    return "validate"
+
+graph.add_conditional_edges(START, should_skip_validation, {
+    "validate": "validate",
+    "reconcile": "reconcile",
+})
+```
+
+### Early termination
+
+If a node detects an unrecoverable error, route to END immediately:
+
+```python
+def route_after_validation(state: ReconState) -> str:
+    """Route based on validation result."""
+    if state.error:
+        return "end"
+    return "reconcile"
+```
+
+## Document Processing
+
+### Batch PDF processing
+
+When handling multiple documents, process in parallel:
+
+```python
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+executor = ThreadPoolExecutor(max_workers=4)
+
+async def parse_all_pdfs(pdf_paths: list[Path]) -> list[dict]:
+    """Parse multiple PDFs concurrently."""
+    loop = asyncio.get_event_loop()
+    tasks = [loop.run_in_executor(executor, parse_pdf, path) for path in pdf_paths]
+    return await asyncio.gather(*tasks)
+```
+
+### File size limits
+
+Prevent processing oversized files:
+
+```python
+MAX_PDF_SIZE_MB = 50
+MAX_TOTAL_SESSION_MB = 200
+
+def validate_file_sizes(session_dir: Path) -> None:
+    """Reject sessions with oversized files."""
+    total_bytes = sum(f.stat().st_size for f in session_dir.rglob("*") if f.is_file())
+    
+    if total_bytes > MAX_TOTAL_SESSION_MB * 1024 * 1024:
+        raise HTTPException(400, f"Session exceeds {MAX_TOTAL_SESSION_MB}MB limit")
+    
+    for pdf in session_dir.rglob("*.pdf"):
+        if pdf.stat().st_size > MAX_PDF_SIZE_MB * 1024 * 1024:
+            raise HTTPException(400, f"File {pdf.name} exceeds {MAX_PDF_SIZE_MB}MB limit")
+```
+
+## Startup Optimization
+
+### Lazy imports for heavy dependencies
+
+```python
+# Only import LangGraph/LLM packages when actually needed
+def build_recon_graph():
+    from langgraph.graph import StateGraph, START, END
+    from src.Graph.recon_graph import ReconState, node_reconcile
+    
+    graph = StateGraph(ReconState)
+    ...
+```
+
+### App lifespan for pre-warming
+
+```python
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Pre-warm expensive resources at startup."""
+    # Compile graph once
+    app.state.graph = build_recon_graph()
+    # Validate settings
+    settings = get_settings()
+    logger.info(f"ReconAgent started with model={settings.recon_model}")
+    yield
+    # Cleanup
+    logger.info("ReconAgent shutting down")
+
+app = FastAPI(lifespan=lifespan)
+```
+
+## Monitoring
+
+### Track LLM costs per request
+
+```python
+import time
+
+def node_reconcile(state: ReconState) -> dict:
+    """Reconcile with cost tracking."""
+    start = time.perf_counter()
+    
+    agent = create_claude_agent(...)
+    response = agent.invoke(state.formatted_prompt)
+    
+    elapsed = time.perf_counter() - start
+    logger.info(
+        "Reconciliation completed",
+        extra={
+            "duration_seconds": elapsed,
+            "model": state.model,
+            "doc_count": state.document_count,
+        },
+    )
+    
+    return {"agent_response": response}
+```

@@ -1,0 +1,61 @@
+---
+description: System prompt engineering guidelines for the reconciliation agent
+globs: ["src/prompts/**/*.md", "src/prompts/**/*.txt"]
+---
+
+# System Prompt Engineering for Reconciliation
+
+## Prompt Structure
+
+System prompts for ReconAgent follow a strict structure:
+
+1. **Identity** — Who the agent is and its core purpose
+2. **Inputs** — What data it receives and their meanings
+3. **Rules** — Exact matching logic and decision criteria
+4. **Process** — Step-by-step workflow
+5. **Constraints** — Boundaries and safety guardrails
+6. **Output Format** — Exact schema requirements
+
+## Writing Guidelines
+
+- Be explicit about matching criteria (exact amounts, normalized references)
+- Specify what to do with ambiguous cases (flag, don't guess)
+- Define "unmatched" clearly (precision over recall)
+- Include data handling constraints (no PII logging)
+- Reference the output template schema
+
+## Prompt Template Pattern
+
+```markdown
+# [AgentName] — System Prompt
+
+You are **[AgentName]**, [one-line purpose].
+
+## Role
+[2-3 sentences on core responsibility]
+
+## Inputs you work with
+1. **[Input 1]** — [description and what it represents]
+2. **[Input 2]** — [description and what it represents]
+
+## [Domain] rules
+[Numbered, precise rules with examples]
+
+## How to work
+1. **[Step]** — [Action with specifics]
+2. **[Step]** — [Action with specifics]
+
+## Constraints
+- [Hard boundary 1]
+- [Hard boundary 2]
+- [Safety guardrail]
+```
+
+## Prompt Testing Checklist
+
+- [ ] Agent knows its exact role and boundaries
+- [ ] All inputs are described with their business meaning
+- [ ] Matching rules are unambiguous (exact thresholds, normalization rules)
+- [ ] Edge cases are addressed (duplicates, ambiguity, missing data)
+- [ ] Output format matches the template exactly
+- [ ] Safety constraints prevent data leakage

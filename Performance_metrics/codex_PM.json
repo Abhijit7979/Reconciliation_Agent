@@ -1,0 +1,185 @@
+{
+  "metadata": {
+    "generated_at": "2026-05-13",
+    "generated_by": "Codex",
+    "evaluation_scope": "artifact_only",
+    "rubric_source": "Performance_metrics.md",
+    "rubric_status": "empty_file",
+    "fallback_rubric_basis": [
+      "PROBLEM_STATEMENT.md measurable success criteria",
+      "src/prompts/sample_template.xlsx schema comparison",
+      "Input PDF to output workbook consistency checks"
+    ]
+  },
+  "artifacts": {
+    "invoices_dir": "user_files/invoice",
+    "bills_dir": "user_files/bills",
+    "bank_statement": "user_files/Bank Statement from Claude.pdf",
+    "agent_output": "user_files/output/Recon_Arkive_Apr2025.xlsx"
+  },
+  "scoring_model": {
+    "formula": "overall_score = sum(metric_score * metric_weight) for measured metrics",
+    "weights": {
+      "strict_match_precision": 0.30,
+      "strict_match_recall": 0.20,
+      "input_coverage": 0.15,
+      "template_schema_conformance": 0.25,
+      "field_consistency": 0.10
+    }
+  },
+  "overall": {
+    "score": 89.4,
+    "verdict": "pass_with_issues",
+    "summary": "Core reconciliation logic is correct and complete, but the workbook is not template-exact and 3 bill status fields are inconsistent with the reconciliation evidence."
+  },
+  "metrics": {
+    "strict_match_precision": {
+      "score": 100.0,
+      "weight": 0.30,
+      "measured": true,
+      "value": "7/7 confirmed matches correct",
+      "evidence": {
+        "confirmed_matches": [
+          "BILL-401",
+          "BILL-402",
+          "BILL-405",
+          "BILL-407",
+          "INV-1041",
+          "INV-1043",
+          "INV-1046"
+        ],
+        "false_positives": []
+      }
+    },
+    "strict_match_recall": {
+      "score": 100.0,
+      "weight": 0.20,
+      "measured": true,
+      "value": "7/7 strict matches captured",
+      "evidence": {
+        "ground_truth_strict_matches": [
+          "BILL-401",
+          "BILL-402",
+          "BILL-405",
+          "BILL-407",
+          "INV-1041",
+          "INV-1043",
+          "INV-1046"
+        ],
+        "missed_matches": [],
+        "near_matches_flagged_for_review": [
+          "BILL-404",
+          "INV-1048"
+        ]
+      }
+    },
+    "input_coverage": {
+      "score": 100.0,
+      "weight": 0.15,
+      "measured": true,
+      "value": "All source records represented in the workbook",
+      "evidence": {
+        "invoices_in_output": "8/8",
+        "bills_in_output": "8/8",
+        "bank_lines_in_output": "14/14",
+        "summary_counts_match_ground_truth": true
+      }
+    },
+    "template_schema_conformance": {
+      "score": 65.0,
+      "weight": 0.25,
+      "measured": true,
+      "value": "Workbook preserves the sheet set and detail headers, but it does not preserve the template layout exactly.",
+      "scoring_note": "100 would require exact template preservation. This score was reduced because the output changes row positions, adds merged title blocks, and materially rewrites the summary layout.",
+      "evidence": {
+        "sheet_names_match": true,
+        "detail_headers_match": {
+          "Invoices": true,
+          "Bills_and_Expenses": true,
+          "Bank_Transactions": true
+        },
+        "exact_layout_match": false,
+        "differences": [
+          "Detail sheet headers were moved from row 3 in the template to row 5 in the output.",
+          "The output adds merged title rows and extra formatting blocks not present in the template.",
+          "The summary sheet content and cell layout differ materially from the template workbook."
+        ]
+      }
+    },
+    "field_consistency": {
+      "score": 81.25,
+      "weight": 0.10,
+      "measured": true,
+      "value": "13/16 document rows are internally consistent with payment fields, bank refs, and notes.",
+      "evidence": {
+        "consistent_rows": 13,
+        "total_rows_checked": 16,
+        "issues": [
+          {
+            "item": "BILL-404",
+            "issue": "Near-match bill is marked Paid even though Amount Paid is 0, Payment Date is blank, and the note says review is required."
+          },
+          {
+            "item": "BILL-405",
+            "issue": "Matched bill is marked Unpaid even though Amount Paid=10000, Payment Date=30 Apr 2025, Bank Ref=BILL-405, and the note says Reconciled."
+          },
+          {
+            "item": "BILL-407",
+            "issue": "Matched bill is marked Unpaid even though Amount Paid=4800, Payment Date=30 Apr 2025, Bank Ref=BILL-407, and the note says Reconciled."
+          }
+        ]
+      }
+    },
+    "runtime": {
+      "measured": false,
+      "reason": "No execution trace or timing artifact was provided."
+    },
+    "privacy_and_logging": {
+      "measured": false,
+      "reason": "No logs, telemetry, or network trace were provided."
+    }
+  },
+  "ground_truth": {
+    "strict_matches": [
+      "BILL-401",
+      "BILL-402",
+      "BILL-405",
+      "BILL-407",
+      "INV-1041",
+      "INV-1043",
+      "INV-1046"
+    ],
+    "near_matches": [
+      "BILL-404",
+      "INV-1048"
+    ],
+    "unmatched_bank_lines": 7,
+    "unmatched_invoices": 5,
+    "unmatched_bills": 4
+  },
+  "findings": [
+    {
+      "severity": "medium",
+      "area": "template_conformance",
+      "issue": "The workbook is not an exact copy of the provided template layout."
+    },
+    {
+      "severity": "medium",
+      "area": "bills_sheet",
+      "item": "BILL-404",
+      "issue": "Status is Paid even though the line is a near-match exception and not reconciled."
+    },
+    {
+      "severity": "medium",
+      "area": "bills_sheet",
+      "item": "BILL-405",
+      "issue": "Status is Unpaid even though the bill is reconciled and payment fields are populated."
+    },
+    {
+      "severity": "medium",
+      "area": "bills_sheet",
+      "item": "BILL-407",
+      "issue": "Status is Unpaid even though the bill is reconciled and payment fields are populated."
+    }
+  ]
+}

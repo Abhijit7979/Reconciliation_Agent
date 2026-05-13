@@ -1,0 +1,122 @@
+---
+description: Quick reference - commands, paths, patterns for daily development
+alwaysApply: false
+---
+
+# Quick Reference
+
+## Common Commands
+
+```bash
+# Development
+uvicorn src.main:app --reload --port 8000
+
+# Run with specific host
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Test API endpoint
+curl -X POST http://localhost:8000/reconcile-from-folder \
+  -F "folder_path=./user_files" \
+  -F "user_prompt=Reconcile these documents"
+
+# Run tests (when available)
+pytest
+pytest --cov=src --cov-report=term-missing
+pytest -m "not slow"
+
+# Lint / Format
+ruff check src/
+ruff format src/
+mypy src/
+
+# Git workflow
+git checkout -b feature/description
+git commit -m "feat(scope): description"
+```
+
+## Key File Locations
+
+| What | Where |
+|------|-------|
+| FastAPI app | `src/main.py` |
+| Graph state & nodes | `src/Graph/recon_graph.py` |
+| Agent factories | `src/agent/recon_agent.py` |
+| System prompt | `src/prompts/SYSTEM_PROMPT.md` |
+| Excel template | `src/prompts/sample_template.xlsx` |
+| User documents | `user_files/` |
+| Dependencies | `requirements.txt` |
+| Environment | `.env` |
+| Cursor rules | `.cursor/rules/` |
+| Role prompts | `.cursor/prompts/` |
+
+## Project Architecture
+
+```
+Request → FastAPI → LangGraph StateGraph → Claude Code Agent → Excel Output
+                         │
+                    ReconState (Pydantic)
+                         │
+                    node_recon()
+                         │
+                    ClaudeAgent() factory
+```
+
+## Key Patterns
+
+1. **State flows through LangGraph** — All data in Pydantic `ReconState`
+2. **Nodes return partial state dicts** — `return {"field": value}`
+3. **Agents are factories** — `ClaudeAgent()` returns configured instance
+4. **Async wrapping** — `asyncio.to_thread(graph.invoke, state)`
+5. **System prompt in markdown** — `src/prompts/SYSTEM_PROMPT.md`
+
+## Environment Variables
+
+```bash
+# Required - LLM Access
+OPENAI_API_KEY=             # OpenAI API key
+CLAUDE_CODE_OAUTH_TOKEN=    # Claude Code OAuth token
+
+# Required - Model Configuration
+RECON_OPENAI_MODEL=         # Model identifier
+RECON_OPENAI_BASE_URL=      # API base URL
+
+# Optional - Observability
+LANGSMITH_TRACING=false     # Enable LangSmith tracing
+LANGSMITH_API_KEY=          # LangSmith API key
+LANGSMITH_PROJECT=          # LangSmith project name
+
+# Optional - Alternative Providers
+GROQ_API_KEY=               # Groq API key
+OPENROUTER_API_KEY=         # OpenRouter API key
+```
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/reconcile-from-folder` | Reconcile documents in a local folder |
+
+### Request (form data):
+- `folder_path` (required) — Path to folder with bills/, invoice/, and bank PDF
+- `user_prompt` (optional) — Custom reconciliation instructions
+
+### Expected folder structure:
+```
+session_folder/
+├── bills/          # Vendor bills (PDFs)
+├── invoice/        # Customer invoices (PDFs)
+└── statement.pdf   # Bank statement (single PDF)
+```
+
+### Response:
+```json
+{
+  "session_dir": "/path/to/session",
+  "output_dir": "/path/to/session/output",
+  "bank_statement": "/path/to/statement.pdf",
+  "agent_response": "Reconciliation results..."
+}
+```
